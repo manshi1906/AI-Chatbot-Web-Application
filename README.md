@@ -112,25 +112,8 @@ http://localhost:8501
 
 This project is open-source and available under the MIT License.
 
-````
-
----
-
-# 📄 `requirements.txt`
-
-Create this file too:
-
-```txt
-streamlit
-torch
-transformers
-````
-
----
-
-
 https://github.com/manshi1906
-```
+
 
 
 
