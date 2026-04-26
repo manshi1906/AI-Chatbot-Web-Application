@@ -1,39 +1,64 @@
 import streamlit as st
-from openai import OpenAI
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-# Page config
-st.set_page_config(page_title="AI Chatbot", page_icon="🤖")
+# Load lightweight model (best for your system)
+model_name = "microsoft/DialoGPT-small"
 
-st.title("🤖 AI Chatbot")
+@st.cache_resource
+def load_model():
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    return tokenizer, model
+
+tokenizer, model = load_model()
+
+st.title("🤖 AI Chatbot (No API)")
 st.write("Ask me anything!")
 
-# Session state for chat history
-
+# Session state
+if "chat_history_ids" not in st.session_state:
+    st.session_state.chat_history_ids = None
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display previous messages
+# Show previous messages
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    st.chat_message(msg["role"]).write(msg["content"])
 
-# User input
+# Input
 user_input = st.chat_input("Type your message...")
 
 if user_input:
-    # Show user message
-    st.chat_message("user").markdown(user_input)
+    st.chat_message("user").write(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    # 🔥 THIS PART MUST BE INDENTED (same level as above lines)
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=st.session_state.messages
+    # Encode input
+    new_input_ids = tokenizer.encode(user_input + tokenizer.eos_token, return_tensors='pt')
+
+    # Add history
+    bot_input_ids = torch.cat(
+        [st.session_state.chat_history_ids, new_input_ids],
+        dim=-1
+    ) if st.session_state.chat_history_ids is not None else new_input_ids
+
+    # Generate response
+    st.session_state.chat_history_ids = model.generate(
+        bot_input_ids,
+        max_length=500,
+        pad_token_id=tokenizer.eos_token_id,
+        do_sample=True,
+        top_k=50,
+        top_p=0.95,
+        temperature=0.7
     )
 
-    reply = response.choices[0].message.content
+    # Decode response
+    response = tokenizer.decode(
+        st.session_state.chat_history_ids[:, bot_input_ids.shape[-1]:][0],
+        skip_special_tokens=True
+    )
 
-    st.chat_message("assistant").markdown(reply)
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.chat_message("assistant").write(response)
+    st.session_state.messages.append({"role": "assistant", "content": response})
